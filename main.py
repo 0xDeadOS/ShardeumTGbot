@@ -1,11 +1,18 @@
 import json
 import requests
+import telebot
 import hashlib
 from requests.exceptions import RequestException
 from urllib3.exceptions import InsecureRequestWarning
+from data import TOKEN, CHAT_ID
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
+BASE_URL = "https://{ip}:{port}"
+LOGIN_ENDPOINT = '/auth/login'
+STATUS_ENDPOINT = '/api/node/status'
+
+bot = telebot.TeleBot(TOKEN)
 
 def hash_password(password):
     hasher = hashlib.sha256()
@@ -15,6 +22,7 @@ def hash_password(password):
 
 
 def login_request(password, ip, port='8080'):
+    url = BASE_URL.format(ip=ip, port=port)
     headers = {
         'Connection': 'keep-alive',
         'Content-Type': 'application/json',
@@ -23,14 +31,15 @@ def login_request(password, ip, port='8080'):
         'password': f'{hash_password(password)}',
     }
     try:
-        response = requests.post(f'https://{ip}:{port}/auth/login', headers=headers, json=json_data, verify=False)
+        response = requests.post(f'{url}{LOGIN_ENDPOINT}', headers=headers, json=json_data, verify=False)
         return response.json().get('accessToken')
     except RequestException as e:
-        print("Error occurred while sending request to server")
+        print(f"Error occurred while sending request to server: {e}")
         return None
 
 
 def status_request(password, ip, port='8080'):
+    url = BASE_URL.format(ip=ip, port=port)
     access_token = login_request(password, ip, port)
     if not access_token:
         return  # Exit if login fails
@@ -40,8 +49,8 @@ def status_request(password, ip, port='8080'):
         'X-Api-Token': f'{access_token}',
     }
     try:
-        response = requests.get(f'https://{ip}:{port}/api/node/status', headers=headers, verify=False)
-        response.raise_for_status()  # Raises HTTPError for bad responses
+        response = requests.get(f'{url}{STATUS_ENDPOINT}', headers=headers, verify=False)
+        response.raise_for_status()
         print(response.status_code)
     except RequestException as e:
         print(f"Error during status request: {e}")
@@ -53,4 +62,4 @@ if __name__ == "__main__":
 
     for user, nodes in data.items():
         for node, info in nodes.items():
-            status_request(info['password'], info['ip'])
+            status_request(info['password'], info['ip'], info['name'])

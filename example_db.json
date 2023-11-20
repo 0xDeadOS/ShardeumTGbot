@@ -1,24 +1,24 @@
 {
   "user1": {
     "Node#1": {
-      "Name": "Home",
+      "name": "Home",
       "ip": "192.168.1.1",
       "password": "user1password"
     },
     "Node#2": {
-      "Name": "Contabo",
+      "name": "Contabo",
       "ip": "192.168.1.2",
       "password": "user1password"
     }
   },
   "user2": {
     "Node#1": {
-      "Name": "Home",
+      "name": "Home",
       "ip": "192.168.1.3",
       "password": "user2password"
     },
     "Node#2": {
-      "Name": "Contabo",
+      "name": "Contabo",
       "ip": "192.168.1.4",
       "password": "user2password"
     }
