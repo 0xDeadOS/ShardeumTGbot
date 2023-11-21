@@ -4,7 +4,7 @@ import telebot
 import hashlib
 from requests.exceptions import RequestException
 from urllib3.exceptions import InsecureRequestWarning
-from data import TOKEN, CHAT_ID
+from Constant.data import TOKEN, CHAT_ID
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
@@ -52,6 +52,7 @@ def status_request(password, ip, port='8080'):
         response = requests.get(f'{url}{STATUS_ENDPOINT}', headers=headers, verify=False)
         response.raise_for_status()
         print(response.status_code)
+        bot.send_message(chat_id=CHAT_ID, text=response.status_code)
     except RequestException as e:
         print(f"Error during status request: {e}")
 
