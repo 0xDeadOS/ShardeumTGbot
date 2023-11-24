@@ -1,66 +1,45 @@
-import json
+import asyncio
+import aiohttp
 import requests
-import telebot
+import json
 import hashlib
-from requests.exceptions import RequestException
+from Constant.data import TOKEN, CHAT_ID, BASE_URL, STATUS_ENDPOINT, LOGIN_ENDPOINT
+
 from urllib3.exceptions import InsecureRequestWarning
-from Constant.data import TOKEN, CHAT_ID
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
-BASE_URL = "https://{ip}:{port}"
-LOGIN_ENDPOINT = '/auth/login'
-STATUS_ENDPOINT = '/api/node/status'
 
-bot = telebot.TeleBot(TOKEN)
-
-def hash_password(password):
+async def req(session, password, ip, name, port='8080'):
+    print(name)
+    url = BASE_URL.format(ip=ip, port=port)
     hasher = hashlib.sha256()
     hasher.update(password.encode('utf-8'))
     hashed_password = hasher.hexdigest()
-    return hashed_password
+    async with session.post(f"{url}{LOGIN_ENDPOINT}", json={
+        "password": hashed_password
+    }) as resp:
+        data = await resp.json()
+        token = data["accessToken"]
+    async with session.get(f"{url}{STATUS_ENDPOINT}", headers={
+        "X-Api-Token": token
+    }) as resp:
+        print(f"Status code for {name}: {resp.status}")
+    return resp.status
 
 
-def login_request(password, ip, port='8080'):
-    url = BASE_URL.format(ip=ip, port=port)
-    headers = {
-        'Connection': 'keep-alive',
-        'Content-Type': 'application/json',
-    }
-    json_data = {
-        'password': f'{hash_password(password)}',
-    }
-    try:
-        response = requests.post(f'{url}{LOGIN_ENDPOINT}', headers=headers, json=json_data, verify=False)
-        return response.json().get('accessToken')
-    except RequestException as e:
-        print(f"Error occurred while sending request to server: {e}")
-        return None
+async def main():
+    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
+        tasks = []
+        with open("db.json") as f:
+            data = json.load(f)
+        for user, nodes in data.items():
+            for node, info in nodes.items():
+                tasks.append(asyncio.ensure_future(req(session, info['password'], info['ip'], info['name'])))
+
+        response = await asyncio.gather(*tasks)
+        print(response)
 
 
-def status_request(password, ip, port='8080'):
-    url = BASE_URL.format(ip=ip, port=port)
-    access_token = login_request(password, ip, port)
-    if not access_token:
-        return  # Exit if login fails
-
-    headers = {
-        'Connection': 'keep-alive',
-        'X-Api-Token': f'{access_token}',
-    }
-    try:
-        response = requests.get(f'{url}{STATUS_ENDPOINT}', headers=headers, verify=False)
-        response.raise_for_status()
-        print(response.status_code)
-        bot.send_message(chat_id=CHAT_ID, text=response.status_code)
-    except RequestException as e:
-        print(f"Error during status request: {e}")
-
-
-if __name__ == "__main__":
-    with open('db.json', 'r') as file:
-        data = json.load(file)
-
-    for user, nodes in data.items():
-        for node, info in nodes.items():
-            status_request(info['password'], info['ip'], info['name'])
+if __name__ == '__main__':
+    asyncio.run(main())
