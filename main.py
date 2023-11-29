@@ -24,21 +24,20 @@ async def req(session, user, password, ip, name, port='8080'):
     async with session.get(f"{url}{STATUS_ENDPOINT}", headers={
         "X-Api-Token": token
     }) as resp:
+        if resp.status != 200:
+            return f"Пиздец ноде, статус: {resp.status}\n"
         data = await resp.json()
         print(f"State for {name}: {data['state']}")
 
-    return f"User: {user}\n     NameNode: {name}\n     State: {data['state']}\n"
+    return f"User: {user} | {name}\n     State: {data['state']}\n"
 
 
 async def main():
+    with open("db.json") as f:
+                data = json.load(f)
     while True:
         async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
-
             tasks = []
-
-            with open("db.json") as f:
-                data = json.load(f)
-
             for user, nodes in data.items():
                 for node, info in nodes.items():
                     tasks.append(asyncio.ensure_future(req(session, user, info['password'], info['ip'], info['name'])))
