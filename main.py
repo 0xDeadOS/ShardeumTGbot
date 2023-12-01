@@ -1,54 +1,78 @@
-import asyncio, aiohttp
-import telebot
-import json
+import aiohttp
+import asyncio
 import hashlib
+import json
+import telebot
+from loguru import logger
 from Constant.data import TOKEN, CHAT_ID, BASE_URL, STATUS_ENDPOINT, LOGIN_ENDPOINT
 
 bot = telebot.TeleBot(TOKEN)
 
+@bot.message_handler(commands=['start'])
+def start(message):
+    bot.send_message(chat_id=message.chat.id, text="Hello, I'm Shardeum TG bot")
+    asyncio.run(check())
+
 def hash_password(password):
     hasher = hashlib.sha256()
     hasher.update(password.encode('utf-8'))
-    hashed_password = hasher.hexdigest()
-    return hashed_password
+    return hasher.hexdigest()
 
-async def req(session, user, password, ip, name, port='8080'):
-    url = BASE_URL.format(ip=ip, port=port)
+async def login_request(session, url, user, password, name):
+    try:
+        async with session.post(f"{url}{LOGIN_ENDPOINT}", json={
+            "password": hash_password(password)
+        }) as resp:
+            if resp.status != 200:
+                return None
+            data = await resp.json()
+            return True, data["accessToken"]
+    except Exception as e:
+        logger.error(f"Error for {user} | {name}")
+        logger.error(e)
 
-    async with session.post(f"{url}{LOGIN_ENDPOINT}", json={
-        "password": hash_password(password)
-    }) as resp:
-        data = await resp.json()
-        token = data["accessToken"]
-
+        return False, e
+    
+async def status_request(session, url, token, name):
     async with session.get(f"{url}{STATUS_ENDPOINT}", headers={
         "X-Api-Token": token
     }) as resp:
         if resp.status != 200:
-            return f"Пиздец ноде, статус: {resp.status}\n"
-        data = await resp.json()
-        print(f"State for {name}: {data['state']}")
+            return None
+        return await resp.json()
 
-    return f"User: {user} | {name}\n     State: {data['state']}\n"
+async def req(session, user, password, ip, name, port='8080') -> str:
+    url = BASE_URL.format(ip=ip, port=port)
+    token = await login_request(session, url, user, password, name)
+    if not token:
+        return f"Error for {user} | {name}"
+    data = await status_request(session, url, token, name)
+    if not data:
+        return f"Error for {user} | {name}\n     "
+    
+    return f"{user} | {name}\n     State: <b>{data['state']}</b>"
 
 
-async def main():
+async def check():
     with open("db.json") as f:
-                data = json.load(f)
-    while True:
+        data = json.load(f)
         async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
             tasks = []
             for user, nodes in data.items():
-                for node, info in nodes.items():
-                    tasks.append(asyncio.ensure_future(req(session, user, info['password'], info['ip'], info['name'])))
-
-            response = await asyncio.gather(*tasks)
-            mess = ''.join(response)
-            
-            bot.send_message(chat_id=CHAT_ID, text=mess)
-            print(response)
-        await asyncio.sleep(60*1)
+                tasks.extend(
+                    asyncio.ensure_future(
+                        req(
+                            session,
+                            user,
+                            info['password'],
+                            info['ip'],
+                            info['name'],
+                        )
+                    )
+                    for node, info in nodes.items()
+                )
+        bot.send_message(chat_id=CHAT_ID, parse_mode='HTML', text='\n'.join(await asyncio.gather(*tasks)))
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    bot.polling(none_stop=True)
